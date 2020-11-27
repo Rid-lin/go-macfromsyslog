@@ -134,6 +134,7 @@ Jun 22 21:40:16 192.168.65.1 dhcp,info dhcp_lan assigned 192.168.65.202 to E8:6F
 func (data *transport) parseLineLog(lineIn string) (lineOfLog, error) {
 	var lineOfLog lineOfLog
 	var lineInMap lineInMap
+	lineIn = strings.ReplaceAll(lineIn, "  ", " ")
 	if !strings.Contains(lineIn, "assigned") {
 		return lineOfLog, fmt.Errorf("This is not assigned/deassigned line:%v", lineIn)
 	}
@@ -151,6 +152,17 @@ func (data *transport) parseLineLog(lineIn string) (lineOfLog, error) {
 	lineInMap.ip = lineInSlice[7]     // 192.168.65.149
 	lineInMap.direct = lineInSlice[8] // from or to
 	lineInMap.mac = lineInSlice[9]    // 04:D3:B5:FC:E8:09
+	log.Debugf("month:'%v',day:'%v',time:'%v',parent:'%v',info:'%v',iface:'%v',method:'%v',ip:'%v',direct:'%v',mac:'%v'",
+		lineInMap.month,
+		lineInMap.day,
+		lineInMap.time,
+		lineInMap.parent,
+		lineInMap.info,
+		lineInMap.iface,
+		lineInMap.method,
+		lineInMap.ip,
+		lineInMap.direct,
+		lineInMap.mac)
 
 	time, err := data.parseUnixStampStr(&lineInMap)
 	if err != nil {
@@ -174,7 +186,7 @@ func (data *transport) parseUnixStamp(lineInMap *lineInMap) (int64, error) {
 	datestr := fmt.Sprintf("%v %v %v %v %v", year, lineInMap.month, lineInMap.day, lineInMap.time, data.GMT)
 	date, err := time.Parse("2006 Jan _2 15:04:05 -0700", datestr)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("datestr:'%v', Error:'%v'", datestr, err)
 	}
 	UnixStamp := date.Unix()
 	return UnixStamp, nil
