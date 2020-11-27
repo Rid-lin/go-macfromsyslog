@@ -17,3 +17,4 @@
 .vscode/launch.json
 *.log
 *.env
+build/*
