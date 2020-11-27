@@ -28,9 +28,12 @@ buildwithoutdebug:
 	@go build $(LDFLAGS) -o build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_$(GOOS)_$(GOARCH).exe -v ./
 
 build_linux:
-	# $(GOOS) := linux
-	# $(GOARCH) := amd64
-	$(shell export GOOS=linux; export GOARCH=amd64; go build -v $(LDFLAGS) -o build/$(PROJECTNAME)_$(VERSION)_linux_$(BUILD)_amd64)
+	$(shell export GOOS=linux; export GOARCH=amd64;	go build -v $(LDFLAGS) -o build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_linux_amd64)
+
+build_linux2:
+	GOOS 'linux'
+	GOARCH 'amd64'
+	$(shell export GOOS=$(GOOS); export GOARCH=$(GOARCH);	go build -v $(LDFLAGS) -o build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_$(GOOS)_$(GOARCH))
 
 buildwithoutdebug_linux:
 	@set GOARCH=$(GOARCH)&&set GOOS=$(GOOS)
