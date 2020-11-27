@@ -6,8 +6,10 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/hpcloud/tail"
 	"github.com/ilyakaznacheev/cleanenv"
@@ -19,25 +21,39 @@ type Config struct {
 	NameSyslogFileName string `yaml:"SyslogFile" toml:"syslog" env:"SYSLOG_FILE"`
 }
 type request struct {
-	Time    string
-	IP      string
+	Time,
+	IP string
 	timeInt int
 }
 
+type lineInMap struct {
+	month,
+	day,
+	time,
+	parent,
+	info,
+	iface,
+	method,
+	ip,
+	direct,
+	mac string
+}
+
 type lineOfLog struct {
-	time    string
-	ip      string
-	mac     string
+	time,
+	ip,
+	mac string
 	timeInt int
 }
 
 type transport struct {
 	mapTable map[string][]lineOfLog
+	GMT      string
 	mux      sync.Mutex
 }
 
 var (
-	data *transport
+	data *transport = new(transport)
 	cfg  Config
 	// writer         *bufio.Writer
 	NameSyslogFile *os.File
@@ -110,17 +126,80 @@ func (data *transport) GetMac(request *request) string {
 	return response
 }
 
-func parseLineLog(line string) lineOfLog {
-	var lineOfLog lineOfLog
+/*
+Jun 22 21:39:13 192.168.65.1 dhcp,info dhcp_lan deassigned 192.168.65.149 from 04:D3:B5:FC:E8:09
+Jun 22 21:40:16 192.168.65.1 dhcp,info dhcp_lan assigned 192.168.65.202 to E8:6F:38:88:92:29
+*/
 
-	return lineOfLog
+func (data *transport) parseLineLog(lineIn string) (lineOfLog, error) {
+	var lineOfLog lineOfLog
+	var lineInMap lineInMap
+	if !strings.Contains(lineIn, "assigned") {
+		return lineOfLog, fmt.Errorf("This is not assigned/deassigned line:%v", lineIn)
+	}
+	lineInSlice := strings.Split(lineIn, " ")
+	if len(lineInSlice) < 10 {
+		return lineOfLog, fmt.Errorf("This is not assigned/deassigned line. Too little data:%v", lineIn)
+	}
+	lineInMap.month = lineInSlice[0]  // Jun
+	lineInMap.day = lineInSlice[1]    // 22
+	lineInMap.time = lineInSlice[2]   // 21:39:13
+	lineInMap.parent = lineInSlice[3] // 192.168.65.1
+	lineInMap.info = lineInSlice[4]   // dhcp,info
+	lineInMap.iface = lineInSlice[5]  // dhcp_lan
+	lineInMap.method = lineInSlice[6] // deassigned or assigned
+	lineInMap.ip = lineInSlice[7]     // 192.168.65.149
+	lineInMap.direct = lineInSlice[8] // from or to
+	lineInMap.mac = lineInSlice[9]    // 04:D3:B5:FC:E8:09
+
+	time, err := data.parseUnixStampStr(&lineInMap)
+	if err != nil {
+		log.Errorf("Failed to parse datetime(Str) %v", err)
+		return lineOfLog, err
+	}
+	timeInt, err := data.parseUnixStampInt(&lineInMap)
+	if err != nil {
+		log.Errorf("Failed to parse datetime(Int) %v", err)
+		return lineOfLog, err
+	}
+	lineOfLog.time = time
+	lineOfLog.timeInt = timeInt
+	lineOfLog.ip = lineInMap.ip
+	lineOfLog.mac = lineInMap.mac
+	return lineOfLog, nil
+}
+
+func (data *transport) parseUnixStamp(lineInMap *lineInMap) (int64, error) {
+	year := time.Now().Format("2006") // Only current Year
+	datestr := fmt.Sprintf("%v %v %v %v %v", year, lineInMap.month, lineInMap.day, lineInMap.time, data.GMT)
+	date, err := time.Parse("2006 Jan _2 15:04:05 -0700", datestr)
+	if err != nil {
+		return 0, err
+	}
+	UnixStamp := date.Unix()
+	return UnixStamp, nil
+}
+
+func (data *transport) parseUnixStampStr(lineInMap *lineInMap) (string, error) {
+	UnixStamp, err := data.parseUnixStamp(lineInMap)
+	return fmt.Sprint(UnixStamp), err
+
+}
+
+func (data *transport) parseUnixStampInt(lineInMap *lineInMap) (int, error) {
+	UnixStamp, err := data.parseUnixStamp(lineInMap)
+	return int(UnixStamp), err
 }
 
 func (data *transport) getDataFromSyslog(t *tail.Tail) {
-	var lineOfLog lineOfLog
+	// var lineOfLog lineOfLog
 	for {
 		for line := range t.Lines {
-			lineOfLog = parseLineLog(line.Text)
+			lineOfLog, err := data.parseLineLog(line.Text)
+			if err != nil {
+				log.Debugf("%v", err)
+				continue
+			}
 
 			timeDB := data.mapTable[lineOfLog.ip]
 			timeDB = append(timeDB, lineOfLog)
@@ -143,7 +222,8 @@ func main() {
 	if err != nil {
 		log.Errorf("Error open Syslog file:%v", err)
 	}
-
+	data.GMT = "+0500"
+	data.mapTable = make(map[string][]lineOfLog)
 	go data.getDataFromSyslog(t)
 
 	go func() {
