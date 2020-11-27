@@ -107,7 +107,7 @@ func getExitSignalsChannel() chan os.Signal {
 func (data *transport) GetMac(request *request) string {
 	var response, minTime string
 
-	timeInt, err := strconv.Atoi(request.IP)
+	timeInt, err := strconv.Atoi(request.Time)
 	if err != nil {
 		return "00:00:00:00:00:00"
 	}
