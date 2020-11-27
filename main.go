@@ -18,15 +18,16 @@ type Config struct {
 	NameSyslogFileName string `yaml:"SyslogFile" toml:"syslog" env:"SYSLOG_FILE"`
 }
 type request struct {
-	Time  string
-	IP    string
-	ipInt int
+	Time    string
+	IP      string
+	timeInt int
 }
 
 type lineOfLog struct {
-	time string
-	ip   string
-	mac  string
+	time    string
+	ip      string
+	mac     string
+	timeInt int
 }
 
 type transport struct {
@@ -89,11 +90,11 @@ func getExitSignalsChannel() chan os.Signal {
 func (data *transport) GetMac(request *request) string {
 	var response, minTime string
 
-	ipInt, err := strconv.Atoi(request.IP)
+	timeInt, err := strconv.Atoi(request.IP)
 	if err != nil {
 		return "00:00:00:00:00:00"
 	}
-	request.ipInt = ipInt
+	request.timeInt = timeInt
 
 	data.mux.Lock()
 	defer data.mux.Unlock()
