@@ -9,6 +9,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/hpcloud/tail"
 	"github.com/ilyakaznacheev/cleanenv"
 	log "github.com/sirupsen/logrus"
 )
@@ -115,13 +116,8 @@ func parseLineLog(line string) lineOfLog {
 	return lineOfLog
 }
 
-func (data *transport) getDataFromSyslog(NameSyslogFileName string) {
+func (data *transport) getDataFromSyslog(t *tail.Tail) {
 	var lineOfLog lineOfLog
-	t, err := tail.TailFile(NameSyslogFileName, tail.Config{Follow: true})
-	if err != nil {
-		log.Errorf("Error open Syslog file:%v", err)
-	}
-
 	for {
 		for line := range t.Lines {
 			lineOfLog = parseLineLog(line.Text)
@@ -143,17 +139,28 @@ func main() {
 	exitChan := getExitSignalsChannel()
 	var request request
 
+	t, err := tail.TailFile(cfg.NameSyslogFileName, tail.Config{Follow: true})
+	if err != nil {
+		log.Errorf("Error open Syslog file:%v", err)
+	}
+
+	go data.getDataFromSyslog(t)
+
 	go func() {
 		<-exitChan
 		// HERE Insert commands to be executed before the program terminates
 		// writer.Flush()
+		log.Debugln("Attempt to shutdown")
+		t.Cleanup()
+		log.Debugln("Removes inotify watches ")
+		t.Stop()
+		log.Debugln("Stops the tailing activity")
 		NameSyslogFile.Close()
+		log.Debugln("Close the open file")
 		log.Println("Shutting down")
 		os.Exit(0)
 
 	}()
-
-	go data.getDataFromSyslog(cfg.NameSyslogFileName)
 
 	for {
 		fmt.Scan(&request.Time, &request.IP)
