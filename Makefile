@@ -22,26 +22,28 @@ K := $(foreach exec,$(EXECUTABLES),\
 build: buildwithoutdebug pack
 
 buildfordebug:
-	@go build -o build/$(PROJECTNAME)_$(TAG).exe -v ./
+	@go build -o build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_$(GOOS)_$(GOARCH).exe -v ./
 
 buildwithoutdebug:
-	@go build $(LDFLAGS) -o build/$(PROJECTNAME)_$(TAG).exe -v ./
+	@go build $(LDFLAGS) -o build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_$(GOOS)_$(GOARCH).exe -v ./
 
-buildwodebug_linux:
-	@set GOOS=linux&& go build $(LDFLAGS) -o build/$(PROJECTNAME)_$(TAG) -v ./
+build_linux:
+	# $(GOOS) := linux
+	# $(GOARCH) := amd64
+	$(shell export GOOS=linux; export GOARCH=amd64; go build -v $(LDFLAGS) -o build/$(PROJECTNAME)_$(VERSION)_linux_$(BUILD)_amd64)
 
 buildwithoutdebug_linux:
 	@set GOARCH=$(GOARCH)&&set GOOS=$(GOOS)
-	@go build $(LDFLAGS) -o build/$(PROJECTNAME)_$(VERSION)_$(GOOS)_$(GOARCH) -v ./
+	@go build $(LDFLAGS) -o build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_$(GOOS)_$(GOARCH) -v ./
 
 prebuild_all:
 	$(foreach GOOS, $(PLATFORMS),\
-	$(foreach GOARCH, $(ARCHITECTURES), $(shell export GOOS=$(GOOS); export GOARCH=$(GOARCH); go build -v $(LDFLAGS) -o build/$(PROJECTNAME)_$(VERSION)_$(GOOS)_$(GOARCH))))
+	$(foreach GOARCH, $(ARCHITECTURES), $(shell export GOOS=$(GOOS); export GOARCH=$(GOARCH); go build -v $(LDFLAGS) -o build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_$(GOOS)_$(GOARCH))))
 
 build_all: prebuild_all pack
 
 run: build
-	build/$(PROJECTNAME)_$(TAG).exe
+	build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_$(GOOS)_$(GOARCH).exe
 	
 .DUFAULT_GOAL := build
 
