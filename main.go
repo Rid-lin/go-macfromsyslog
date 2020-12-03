@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -11,8 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gorilla/mux"
+	// "github.com/gorilla/sessions"
 	"github.com/hpcloud/tail"
 	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -53,8 +57,7 @@ type transport struct {
 }
 
 var (
-	data *transport = new(transport)
-	cfg  Config
+	cfg Config
 	// writer         *bufio.Writer
 	NameSyslogFile *os.File
 	// err            error
@@ -130,6 +133,17 @@ func (data *transport) GetMac(request *request) string {
 Jun 22 21:39:13 192.168.65.1 dhcp,info dhcp_lan deassigned 192.168.65.149 from 04:D3:B5:FC:E8:09
 Jun 22 21:40:16 192.168.65.1 dhcp,info dhcp_lan assigned 192.168.65.202 to E8:6F:38:88:92:29
 */
+
+func NewTransport() *transport {
+	return &transport{
+		mapTable: make(map[string][]lineOfLog),
+		GMT:      "+0500",
+	}
+	// var transport = new(transport)
+	// transport.mapTable = make(map[string][]lineOfLog)
+	// transport.GMT = "+0500"
+	// return transport
+}
 
 func (data *transport) parseLineLog(lineIn string) (lineOfLog, error) {
 	var lineOfLog lineOfLog
@@ -224,6 +238,34 @@ func (data *transport) getDataFromSyslog(t *tail.Tail) {
 	}
 }
 
+type server struct {
+	router *mux.Router
+	logger *logrus.Logger
+	store  *transport
+	// sessionStore sessions.Store
+}
+
+func newServer(store transport /*sessionStore sessions.Store*/) *server {
+	s := &server{
+		router: mux.NewRouter(),
+		logger: logrus.New(),
+		store:  &store,
+		// sessionStore: sessionStore,
+	}
+
+	s.configureRouter()
+
+	return s
+}
+
+func (s *server) configureRouter() {
+	s.router.HandleFunc("/", s.handleIndex()).Methods("GET")
+	s.router.HandleFunc("/getmac", s.getmac()).Methods("GET")
+
+	// для отдачи сервером статичных файлов из папки web
+	s.router.PathPrefix("/web/").Handler(http.StripPrefix("/web/", http.FileServer(http.Dir("./web"))))
+}
+
 func main() {
 
 	/*Creating a channel to intercept the program end signal*/
@@ -234,8 +276,8 @@ func main() {
 	if err != nil {
 		log.Errorf("Error open Syslog file:%v", err)
 	}
-	data.GMT = "+0500"
-	data.mapTable = make(map[string][]lineOfLog)
+
+	data := NewTransport()
 	go data.getDataFromSyslog(t)
 
 	go func() {
