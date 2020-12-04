@@ -42,6 +42,8 @@ buildwithoutdebug_linux:
 prebuild_all:
 	$(foreach GOOS, $(PLATFORMS),\
 	$(foreach GOARCH, $(ARCHITECTURES), $(shell export GOOS=$(GOOS); export GOARCH=$(GOARCH); go build -v $(LDFLAGS) -o build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_$(GOOS)_$(GOARCH))))
+	$(shell mv build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_windows_386 build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_windows_386.exe)
+	$(shell mv build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_windows_amd64 build/$(PROJECTNAME)_$(VERSION)_$(BUILD)_windows_amd64.exe)
 
 build_all: prebuild_all pack
 
