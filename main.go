@@ -323,6 +323,8 @@ func main() {
 	if err != nil {
 		log.Errorf("Error open Syslog file:%v", err)
 	}
+	defer t.Cleanup()
+	defer t.Stop()
 
 	data := NewTransport()
 	go data.getDataFromSyslog(t)
@@ -337,21 +339,6 @@ func main() {
 		}
 	}()
 
-	// go func() {
-	// 	<-exitChan
-	// 	// HERE Insert commands to be executed before the program terminates
-	// 	// writer.Flush()
-	// 	log.Infoln("Attempt to shutdown")
-	// 	t.Cleanup()
-	// 	log.Infoln("Removes inotify watches ")
-	// 	t.Stop()
-	// 	log.Infoln("Stops the tailing activity")
-	// 	SyslogFile.Close()
-	// 	log.Infoln("Close the open file")
-	// 	log.Infoln("Shutting down")
-	// 	os.Exit(0)
-
-	// }()
 	stop := newGrecefullShutdown(t, SyslogFile, exitChan)
 
 	go stop.grecefullShutdown()
