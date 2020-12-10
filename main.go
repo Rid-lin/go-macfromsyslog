@@ -317,7 +317,7 @@ func main() {
 
 	/*Creating a channel to intercept the program end signal*/
 	exitChan := getExitSignalsChannel()
-	var request request
+	// var request request
 
 	t, err := tail.TailFile(cfg.NameSyslogFileName, tail.Config{Follow: true})
 	if err != nil {
@@ -332,22 +332,22 @@ func main() {
 	http.HandleFunc("/", handleIndex())
 	http.HandleFunc("/getmac", data.getmac())
 
-	go func() {
-		err := http.ListenAndServe(cfg.BindAddr, nil)
-		if err != nil {
-			log.Fatalf("HTTP-Server return error:%v", err)
-		}
-	}()
-
 	stop := newGrecefullShutdown(t, SyslogFile, exitChan)
 
 	go stop.grecefullShutdown()
+	// go func() {
 
-	for {
-		fmt.Scan(&request.Time, &request.IP)
-		s := data.GetMac(&request)
-		fmt.Println(s)
-		log.Debugf(" | Request:'%v','%v' response:'%v'", request.Time, request.IP, s)
+	// for {
+	// 	fmt.Scan(&request.Time, &request.IP)
+	// 	s := data.GetMac(&request)
+	// 	fmt.Println(s)
+	// 	log.Debugf(" | Request:'%v','%v' response:'%v'", request.Time, request.IP, s)
+	// }
+	// }()
+	log.Infof("MacFromSyslog-server listen %v", cfg.BindAddr)
+	err = http.ListenAndServe(cfg.BindAddr, nil)
+	if err != nil {
+		log.Fatalf("HTTP-Server return error:%v", err)
 	}
 
 }
