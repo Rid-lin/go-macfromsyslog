@@ -106,7 +106,7 @@ func getExitSignalsChannel() chan os.Signal {
 		syscall.SIGINT,  // Ctrl+C
 		syscall.SIGQUIT, // Ctrl-\
 		// syscall.SIGKILL, // "always fatal", "SIGKILL and SIGSTOP may not be caught by a program"
-		syscall.SIGHUP, // "terminal is disconnected"
+		// syscall.SIGHUP, // "terminal is disconnected"
 	)
 	return c
 
