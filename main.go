@@ -22,7 +22,8 @@ import (
 type Config struct {
 	LogLevel           string `yaml:"LogLevel" toml:"loglevel" env:"LOG_LEVEL"`
 	NameSyslogFileName string `yaml:"SyslogFile" toml:"syslog" env:"SYSLOG_FILE"`
-	BindAddr           string `yaml:"BindAddr" toml:"bindaddr" env:"ADDR_M4S" default:":3030"`
+	BindAddr           string `yaml:"BindAddr" toml:"bindaddr" env:"ADDR_M4S" envdefault:":3030"`
+	GMT                string `yaml:"GMT" toml:"gmt" env:"GMT_M4S"`
 }
 type request struct {
 	Time,
@@ -69,6 +70,7 @@ var (
 
 func init() {
 	flag.StringVar(&cfg.LogLevel, "loglevel", "info", "Log level")
+	flag.StringVar(&cfg.GMT, "gmt", "+0500", "GMT offset time")
 	flag.StringVar(&cfg.NameSyslogFileName, "syslog", "syslog.log", "The file where logs will be written in the format of squid logs")
 	flag.StringVar(&cfg.BindAddr, "addr", ":3030", "Listen address")
 	flag.Parse()
@@ -139,15 +141,11 @@ Jun 22 21:39:13 192.168.65.1 dhcp,info dhcp_lan deassigned 192.168.65.149 from 0
 Jun 22 21:40:16 192.168.65.1 dhcp,info dhcp_lan assigned 192.168.65.202 to E8:6F:38:88:92:29
 */
 
-func NewTransport() *transport {
+func NewTransport(cfg *Config) *transport {
 	return &transport{
 		mapTable: make(map[string][]lineOfLog),
-		GMT:      "+0500",
+		GMT:      cfg.GMT,
 	}
-	// var transport = new(transport)
-	// transport.mapTable = make(map[string][]lineOfLog)
-	// transport.GMT = "+0500"
-	// return transport
 }
 
 func (data *transport) parseLineLog(lineIn string) (lineOfLog, error) {
@@ -326,7 +324,7 @@ func main() {
 	defer t.Cleanup()
 	defer t.Stop()
 
-	data := NewTransport()
+	data := NewTransport(&cfg)
 	go data.getDataFromSyslog(t)
 
 	http.HandleFunc("/", handleIndex())
