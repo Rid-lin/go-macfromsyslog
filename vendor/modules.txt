@@ -2,9 +2,6 @@
 github.com/BurntSushi/toml
 # github.com/fsnotify/fsnotify v1.4.9
 ## explicit
-# github.com/gorilla/mux v1.8.0
-## explicit
-github.com/gorilla/mux
 # github.com/hpcloud/tail v1.0.0
 ## explicit
 github.com/hpcloud/tail

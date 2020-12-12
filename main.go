@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -12,17 +13,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gorilla/mux"
 	// "github.com/gorilla/sessions"
 	"github.com/hpcloud/tail"
 	"github.com/ilyakaznacheev/cleanenv"
-	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 )
 
 type Config struct {
 	LogLevel           string `yaml:"LogLevel" toml:"loglevel" env:"LOG_LEVEL"`
 	NameSyslogFileName string `yaml:"SyslogFile" toml:"syslog" env:"SYSLOG_FILE"`
+	BindAddr           string `yaml:"BindAddr" toml:"bindaddr" env:"ADDR_M4S" envdefault:":3030"`
+	GMT                string `yaml:"GMT" toml:"gmt" env:"GMT_M4S"`
 }
 type request struct {
 	Time,
@@ -30,6 +31,9 @@ type request struct {
 	timeInt int
 }
 
+type response struct {
+	Mac string `JSON:"Mac"`
+}
 type lineInMap struct {
 	month,
 	day,
@@ -59,14 +63,16 @@ type transport struct {
 var (
 	cfg Config
 	// writer         *bufio.Writer
-	NameSyslogFile *os.File
+	SyslogFile *os.File
 	// err            error
 	configFilename string = "config.toml" //need change
 )
 
 func init() {
 	flag.StringVar(&cfg.LogLevel, "loglevel", "info", "Log level")
+	flag.StringVar(&cfg.GMT, "gmt", "+0500", "GMT offset time")
 	flag.StringVar(&cfg.NameSyslogFileName, "syslog", "syslog.log", "The file where logs will be written in the format of squid logs")
+	flag.StringVar(&cfg.BindAddr, "addr", ":3030", "Listen address")
 	flag.Parse()
 	var config_source string
 	if cfg.NameSyslogFileName == "" {
@@ -74,16 +80,17 @@ func init() {
 		if err != nil {
 			log.Warningf("No config file(%v) found: %v", configFilename, err)
 		}
-		lvl, err2 := log.ParseLevel(cfg.LogLevel)
-		if err2 != nil {
-			log.Errorf("Error in determining the level of logs (%v). Installed by default = Info", cfg.LogLevel)
-			lvl, _ = log.ParseLevel("info")
-		}
-		log.SetLevel(lvl)
 		config_source = "ENV/CFG"
 	} else {
 		config_source = "CLI"
 	}
+
+	lvl, err := log.ParseLevel(cfg.LogLevel)
+	if err != nil {
+		log.Errorf("Error in determining the level of logs (%v). Installed by default = Info", cfg.LogLevel)
+		lvl, _ = log.ParseLevel("info")
+	}
+	log.SetLevel(lvl)
 
 	log.Debugf("Config read from %s: NameSyslogFile=(%v)",
 		config_source,
@@ -101,7 +108,7 @@ func getExitSignalsChannel() chan os.Signal {
 		syscall.SIGINT,  // Ctrl+C
 		syscall.SIGQUIT, // Ctrl-\
 		// syscall.SIGKILL, // "always fatal", "SIGKILL and SIGSTOP may not be caught by a program"
-		syscall.SIGHUP, // "terminal is disconnected"
+		// syscall.SIGHUP, // "terminal is disconnected"
 	)
 	return c
 
@@ -134,15 +141,11 @@ Jun 22 21:39:13 192.168.65.1 dhcp,info dhcp_lan deassigned 192.168.65.149 from 0
 Jun 22 21:40:16 192.168.65.1 dhcp,info dhcp_lan assigned 192.168.65.202 to E8:6F:38:88:92:29
 */
 
-func NewTransport() *transport {
+func NewTransport(cfg *Config) *transport {
 	return &transport{
 		mapTable: make(map[string][]lineOfLog),
-		GMT:      "+0500",
+		GMT:      cfg.GMT,
 	}
-	// var transport = new(transport)
-	// transport.mapTable = make(map[string][]lineOfLog)
-	// transport.GMT = "+0500"
-	// return transport
 }
 
 func (data *transport) parseLineLog(lineIn string) (lineOfLog, error) {
@@ -166,7 +169,7 @@ func (data *transport) parseLineLog(lineIn string) (lineOfLog, error) {
 	lineInMap.ip = lineInSlice[7]     // 192.168.65.149
 	lineInMap.direct = lineInSlice[8] // from or to
 	lineInMap.mac = lineInSlice[9]    // 04:D3:B5:FC:E8:09
-	log.Debugf("month:'%v',day:'%v',time:'%v',parent:'%v',info:'%v',iface:'%v',method:'%v',ip:'%v',direct:'%v',mac:'%v'",
+	log.Tracef("month:'%v',day:'%v',time:'%v',parent:'%v',info:'%v',iface:'%v',method:'%v',ip:'%v',direct:'%v',mac:'%v'",
 		lineInMap.month,
 		lineInMap.day,
 		lineInMap.time,
@@ -223,7 +226,7 @@ func (data *transport) getDataFromSyslog(t *tail.Tail) {
 		for line := range t.Lines {
 			lineOfLog, err := data.parseLineLog(line.Text)
 			if err != nil {
-				log.Debugf("%v", err)
+				log.Tracef("%v", err)
 				continue
 			}
 
@@ -238,69 +241,111 @@ func (data *transport) getDataFromSyslog(t *tail.Tail) {
 	}
 }
 
-type server struct {
-	router *mux.Router
-	logger *logrus.Logger
-	store  *transport
-	// sessionStore sessions.Store
-}
-
-func newServer(store transport /*sessionStore sessions.Store*/) *server {
-	s := &server{
-		router: mux.NewRouter(),
-		logger: logrus.New(),
-		store:  &store,
-		// sessionStore: sessionStore,
+func handleIndex() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w,
+			`<html>
+			<head>
+			<title>go-macfromsyslog</title>
+			</head>
+			<body>
+			Более подробно на https://github.com/Rid-lin/go-macfromsyslog
+			</body>
+			</html>
+			`)
 	}
-
-	s.configureRouter()
-
-	return s
 }
 
-func (s *server) configureRouter() {
-	s.router.HandleFunc("/", s.handleIndex()).Methods("GET")
-	s.router.HandleFunc("/getmac", s.getmac()).Methods("GET")
+func (data *transport) getmac() http.HandlerFunc {
+	var (
+		request  request
+		Response response
+	)
 
-	// для отдачи сервером статичных файлов из папки web
-	s.router.PathPrefix("/web/").Handler(http.StripPrefix("/web/", http.FileServer(http.Dir("./web"))))
+	return func(w http.ResponseWriter, r *http.Request) {
+		request.Time = r.URL.Query().Get("time")
+		request.IP = r.URL.Query().Get("ip")
+		Response.Mac = data.GetMac(&request)
+		log.Debugf(" | Request:'%v','%v' response:'%v'", request.Time, request.IP, Response.Mac)
+		responseJSON, err := json.Marshal(Response)
+		if err != nil {
+			log.Errorf("Error Marshaling mac'%v'to JSON:'%v'", Response.Mac, err)
+		}
+		// fmt.Fprint(w, mac)
+		_, err2 := w.Write(responseJSON)
+		if err2 != nil {
+			log.Errorf("Error send response:%v", err2)
+		}
+	}
+}
+
+type shutdownType struct {
+	SyslogFile *os.File
+	t          *tail.Tail
+	exitChan   chan os.Signal
+}
+
+func (stop *shutdownType) grecefullShutdown() {
+	<-stop.exitChan
+	// HERE Insert commands to be executed before the program terminates
+	// writer.Flush()
+	log.Infoln("Attempt to shutdown")
+	stop.t.Cleanup()
+	log.Infoln("Removes inotify watches ")
+	if err := stop.t.Stop(); err != nil {
+		log.Error("Error stops the tailing activity", err)
+	}
+	log.Infoln("Stops the tailing activity")
+	stop.SyslogFile.Close()
+	log.Infoln("Close the open file")
+	log.Infoln("Shutting down")
+	os.Exit(0)
+
+}
+
+func newGrecefullShutdown(t *tail.Tail, file *os.File, exitChan chan os.Signal) *shutdownType {
+	return &shutdownType{
+		t:          t,
+		SyslogFile: file,
+		exitChan:   exitChan,
+	}
 }
 
 func main() {
 
 	/*Creating a channel to intercept the program end signal*/
 	exitChan := getExitSignalsChannel()
-	var request request
+	// var request request
 
 	t, err := tail.TailFile(cfg.NameSyslogFileName, tail.Config{Follow: true})
 	if err != nil {
 		log.Errorf("Error open Syslog file:%v", err)
 	}
+	defer t.Cleanup()
+	defer t.Stop()
 
-	data := NewTransport()
+	data := NewTransport(&cfg)
 	go data.getDataFromSyslog(t)
 
-	go func() {
-		<-exitChan
-		// HERE Insert commands to be executed before the program terminates
-		// writer.Flush()
-		log.Debugln("Attempt to shutdown")
-		t.Cleanup()
-		log.Debugln("Removes inotify watches ")
-		t.Stop()
-		log.Debugln("Stops the tailing activity")
-		NameSyslogFile.Close()
-		log.Debugln("Close the open file")
-		log.Println("Shutting down")
-		os.Exit(0)
+	http.HandleFunc("/", handleIndex())
+	http.HandleFunc("/getmac", data.getmac())
 
-	}()
+	stop := newGrecefullShutdown(t, SyslogFile, exitChan)
 
-	for {
-		fmt.Scan(&request.Time, &request.IP)
-		s := data.GetMac(&request)
-		fmt.Println(s)
-		log.Debugf(" | Request:'%v','%v' response:'%v'", request.Time, &request.IP, s)
+	go stop.grecefullShutdown()
+	// go func() {
+
+	// for {
+	// 	fmt.Scan(&request.Time, &request.IP)
+	// 	s := data.GetMac(&request)
+	// 	fmt.Println(s)
+	// 	log.Debugf(" | Request:'%v','%v' response:'%v'", request.Time, request.IP, s)
+	// }
+	// }()
+	log.Infof("MacFromSyslog-server listen %v", cfg.BindAddr)
+	err = http.ListenAndServe(cfg.BindAddr, nil)
+	if err != nil {
+		log.Fatalf("HTTP-Server return error:%v", err)
 	}
 
 }
